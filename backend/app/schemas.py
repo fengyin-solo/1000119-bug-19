@@ -28,6 +28,12 @@ class EntryPayload(BaseModel):
     remark: str | None = None
 
 
+class ReportPackagePayload(BaseModel):
+    """报表打包下载时提交的任务编号集合。"""
+
+    ids: list[int] = Field(default_factory=list)
+
+
 
 class OrderEntry(BaseModel):
     """冷链订单明细结构。"""

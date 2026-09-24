@@ -21,6 +21,7 @@ const Alarm = () => import('@/views/alarm/index.vue')
 const Customer = () => import('@/views/customer/index.vue')
 const Billing = () => import('@/views/billing/index.vue')
 const Report = () => import('@/views/report/index.vue')
+const ReportDetail = () => import('@/views/report/detail.vue')
 const Setting = () => import('@/views/setting/index.vue')
 
 const router = createRouter({
@@ -47,6 +48,7 @@ const router = createRouter({
     { path: '/customer', name: 'customer', component: Customer },
     { path: '/billing', name: 'billing', component: Billing },
     { path: '/report', name: 'report', component: Report },
+    { path: '/report/:id', name: 'report-detail', component: ReportDetail },
     { path: '/setting', name: 'setting', component: Setting },
   ],
 })

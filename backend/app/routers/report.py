@@ -1,11 +1,16 @@
-"""报表导出接口：维护报表任务，覆盖生成报表、重试任务、下载报表等动作。"""
+"""报表导出接口：维护报表任务，覆盖生成报表、重试任务、单份下载与打包下载。
+
+状态流转（生成、重试）走 actions 接口；下载是只读动作，走独立的下载接口，
+返回带正确 Content-Disposition 的文件，不会把任务状态改成已完成。
+"""
 from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 
-from app.schemas import ActionResult, EntryPayload, PageResult
+from app.schemas import ActionResult, EntryPayload, PageResult, ReportPackagePayload
+from app.services.report import content_disposition
 from app.services.report import ReportService
 
 router = APIRouter(prefix="/api/report", tags=["报表导出"])
@@ -30,6 +35,39 @@ def list_entries(
     return PageResult(items=items, total=total, page=page, size=size)
 
 
+@router.get("/export")
+def export_entries() -> dict[str, Any]:
+    """导出报表导出清单：返回当前过滤条件下的全量数据。"""
+    items, total = service.list_entries(page=1, size=10000)
+    return {"module": "report", "total": total, "items": items}
+
+
+@router.get("/{entry_id}/download")
+def download_entry(entry_id: int) -> Response:
+    """下载单份报表文件。任务未完成或生成失败时说明原因，且不改动任务状态与记录。"""
+    payload, message = service.download_entry(entry_id)
+    if payload is None:
+        raise HTTPException(status_code=409, detail=message)
+    return Response(
+        content=payload["data"],
+        media_type=payload["media_type"],
+        headers={"Content-Disposition": content_disposition(payload["filename"])},
+    )
+
+
+@router.post("/package")
+def package_entries(payload: ReportPackagePayload) -> Response:
+    """把勾选的多张已完成报表打成一个 zip；任一张不可下载都会逐项说明原因。"""
+    result, message = service.package_entries(payload.ids)
+    if result is None:
+        raise HTTPException(status_code=409, detail=message)
+    return Response(
+        content=result["data"],
+        media_type=result["media_type"],
+        headers={"Content-Disposition": content_disposition(result["filename"])},
+    )
+
+
 @router.get("/{entry_id}", response_model=dict)
 def get_entry(entry_id: int) -> dict:
     """读取单条报表任务明细；不存在时给出可读的错误说明。"""
@@ -50,16 +88,9 @@ def create_entry(payload: EntryPayload) -> ActionResult:
 
 @router.post("/{entry_id}/actions", response_model=ActionResult)
 def run_action(entry_id: int, payload: EntryPayload) -> ActionResult:
-    """对单条报表任务执行生成报表、重试任务、下载报表；不允许的动作会被拦下并说明原因。"""
+    """对单条报表任务执行生成报表、重试任务；下载请走下载接口，不应改变任务状态。"""
     action = str(payload.values.get("action") or "").strip()
     entry, message = service.run_action(entry_id, action)
     if entry is None:
         return ActionResult(ok=False, message=message)
     return ActionResult(ok=True, message=message, entry=entry)
-
-
-@router.get("/export")
-def export_entries() -> dict[str, Any]:
-    """导出报表导出清单：返回当前过滤条件下的全量数据。"""
-    items, total = service.list_entries(page=1, size=10000)
-    return {"module": "report", "total": total, "items": items}
